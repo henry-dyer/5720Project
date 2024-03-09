@@ -6,39 +6,28 @@ from scipy.stats import norm
 from scipy.stats import skew, kurtosis
 from scipy.stats.mstats import gmean
 
-# Seleccionar Criterio de Optimización
-optimization_criterion = 'cvar'  # Cambia a 'sharpe', 'cvar', 'sortino' o 'variance' para optimizar esos criterios
-
-# Elegir Acciones por agregar al Protafolio y Seleccionar periodo de muestra
-#symbols = ['AMC', 'PEP', 'COKE', 'GE', 'TBT', 'GME', 'TSLA']
-start_date = '2018-01-01'
-end_date = '2023-01-01'
+# Optimization Criterion : 'cvar', 'sharpe', 'sortino', 'variance'
+optimization_criterion = 'sharpe'
 
 data = pd.read_excel('Data/stock_prices.xlsx')
-data = data.drop('DATE', axis = 1)
-
+data = data.drop('DATE', axis=1)
 symbols = data.columns
 
-# Calcular los retornos
 returns = data.pct_change().dropna()
 
 
-# Definir la función objetivo para la optimización de la relación de Sharpe
 def objective_sharpe(weights):
     return -np.dot(weights, returns.mean()) / np.sqrt(np.dot(weights.T, np.dot(returns.cov() * 252, weights)))
 
-
-# Definir la función objetivo para la optimización del CVaR
 def objective_cvar(weights):
     portfolio_returns = np.dot(returns, weights)
     portfolio_mean = portfolio_returns.mean()
     portfolio_std = portfolio_returns.std()
-    conf_level = 0.05  # Nivel de confianza para el CVaR
+    conf_level = 0.05
     cvar = portfolio_mean - portfolio_std * norm.ppf(conf_level)
-    return cvar
+    return -np.dot(weights, returns.mean()) / cvar
 
 
-# Definir la función objetivo para la optimización de la relación de Sortino
 def objective_sortino(weights):
     portfolio_returns = np.dot(returns, weights)
     downside_returns = portfolio_returns[portfolio_returns < 0]
@@ -47,18 +36,15 @@ def objective_sortino(weights):
     return -sortino_ratio  # Maximizar la relación de Sortino
 
 
-# Definir la función objetivo para la minimización de la varianza
 def objective_variance(weights):
     return np.dot(weights.T, np.dot(returns.cov() * 252, weights))
 
 
-# Las restricciones
-cons = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
 
-# Los límites para los pesos
+cons = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
 bounds = tuple((0, 1) for x in range(len(symbols)))
 
-# Optimización
+
 init_guess = np.array(len(symbols) * [1. / len(symbols), ])
 if optimization_criterion == 'sharpe':
     opt_results = minimize(objective_sharpe, init_guess, method='SLSQP', bounds=bounds, constraints=cons)
@@ -69,26 +55,23 @@ elif optimization_criterion == 'sortino':
 elif optimization_criterion == 'variance':
     opt_results = minimize(objective_variance, init_guess, method='SLSQP', bounds=bounds, constraints=cons)
 
-# Los pesos óptimos
+
 optimal_weights = opt_results.x
 
-# Optimizar todos los criterios
 opt_results_cvar = minimize(objective_cvar, init_guess, method='SLSQP', bounds=bounds, constraints=cons)
 opt_results_sortino = minimize(objective_sortino, init_guess, method='SLSQP', bounds=bounds, constraints=cons)
 opt_results_variance = minimize(objective_variance, init_guess, method='SLSQP', bounds=bounds, constraints=cons)
 opt_results_sharpe = minimize(objective_sharpe, init_guess, method='SLSQP', bounds=bounds, constraints=cons)
 
-# Pesos óptimos para cada criterio
 optimal_weights_cvar = opt_results_cvar.x
 optimal_weights_sortino = opt_results_sortino.x
 optimal_weights_variance = opt_results_variance.x
 optimal_weights_sharpe = opt_results_sharpe.x
 
-# Graficar la frontera eficiente
 port_returns = []
 port_volatility = []
 sharpe_ratio = []
-all_weights = []  # almacena los pesos de todas las carteras simuladas
+all_weights = []
 
 num_assets = len(symbols)
 num_portfolios = 50000
@@ -154,7 +137,6 @@ def detailed_portfolio_statistics(weights):
     skewness = skew(portfolio_returns)
     kurt = kurtosis(portfolio_returns)
     max_dd = max_drawdown(portfolio_returns)
-    count = len(portfolio_returns)
 
     # Métricas de optimización
     risk_free_rate = 0.00
@@ -166,7 +148,7 @@ def detailed_portfolio_statistics(weights):
     sortino_ratio = mean_return_annualized / downside_std_dev
     variance = std_dev_annualized ** 2
 
-    return mean_return_annualized, std_dev_annualized, skewness, kurt, max_dd, count, sharpe_ratio, cvar, sortino_ratio, variance
+    return mean_return_annualized, std_dev_annualized, skewness, kurt, max_dd, sharpe_ratio, cvar, sortino_ratio, variance
 
 
 # Calcular estadísticas para cada portafolio
@@ -175,11 +157,11 @@ statistics_sortino = detailed_portfolio_statistics(optimal_weights_sortino)
 statistics_variance = detailed_portfolio_statistics(optimal_weights_variance)
 statistics_sharpe = detailed_portfolio_statistics(optimal_weights_sharpe)
 
-# Nombres de las estadísticas
-statistics_names = ['Retorno anualizado', 'Volatilidad anualizada', 'Skewness', 'Kurtosis', 'Max Drawdown',
-                    'Conteo de datos', 'Sharpe Ratio', 'CVaR', 'Ratio Sortino', 'Varianza']
 
-# Diccionario que asocia los nombres de los métodos de optimización con los pesos óptimos y las estadísticas
+statistics_names = ['Annualized Return', 'Annualized Volatility', 'Skewness', 'Kurtosis', 'Max Drawdown',
+                    'Sharpe Ratio', 'CVaR', 'Sortino', 'Variance']
+
+
 portfolio_data = {
     'CVaR': {
         'weights': optimal_weights_cvar,
@@ -204,20 +186,19 @@ for method, data in portfolio_data.items():
     print("\n")
     print("========================================================================================================")
     print("\n")
-    print(f"Pesos del portafolio óptimo para {method}:")
+    print(f"Weights for portfolio optimized on {method}:")
     print("\n")
     for symbol, weight in zip(symbols, data['weights']):
-        if weight < 1e-4:  # considera cualquier peso menor que 0.01% como cero
-            print(f"{symbol}: prácticamente 0%")
+        if weight < 1e-4:
+            print(f"{symbol}: Practically 0%")
         else:
             print(f"{symbol}: {weight * 100:.2f}%")
 
     print("\n")
-    print(f"Estadísticas descriptivas del portafolio óptimo para {method}:")
+    print(f"Statistics for portfolio optimized on {method}:")
     print("\n")
     for name, stat in zip(statistics_names, data['statistics']):
         print(f"{name}: {stat * 100 if name != 'Conteo de datos' else stat:.2f}")
 
 print("\n")
 print("========================================================================================================")
-
