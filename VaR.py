@@ -17,6 +17,17 @@ def historicalVaR(returns, alpha=5):
         raise TypeError("Expected returns to be dataframe or series")
 
 
+def parametricVaR(portofolioReturns, portfolioStd, distribution='normal', alpha=5, dof=6):
+    # because the distribution is symmetric
+    if distribution == 'normal':
+        VaR = norm.ppf(1-alpha/100)*portfolioStd - portofolioReturns
+    elif distribution == 't-distribution':
+        nu = dof
+        VaR = np.sqrt((nu-2)/nu) * t.ppf(1-alpha/100, nu) * portfolioStd - portofolioReturns
+    else:
+        raise TypeError("Expected distribution type 'normal'/'t-distribution'")
+    return VaR
+
 
 def historicalCVaR(returns, alpha=5):
     """
@@ -31,18 +42,6 @@ def historicalCVaR(returns, alpha=5):
         return returns.aggregate(historicalCVaR, alpha=alpha)
     else:
         raise TypeError("Expected returns to be dataframe or series")
-
-
-def parametricVaR(portofolioReturns, portfolioStd, distribution='normal', alpha=5, dof=6):
-    # because the distribution is symmetric
-    if distribution == 'normal':
-        VaR = norm.ppf(1-alpha/100)*portfolioStd - portofolioReturns
-    elif distribution == 't-distribution':
-        nu = dof
-        VaR = np.sqrt((nu-2)/nu) * t.ppf(1-alpha/100, nu) * portfolioStd - portofolioReturns
-    else:
-        raise TypeError("Expected distribution type 'normal'/'t-distribution'")
-    return VaR
 
 
 def parametricCVaR(portofolioReturns, portfolioStd, distribution='normal', alpha=5, dof=6):
